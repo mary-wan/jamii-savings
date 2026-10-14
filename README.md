@@ -26,7 +26,8 @@ with a **Jenkins** pipeline automating build → test → deploy.
 | Part | API | Pattern | Backend |
 |---|-----|---------|---------|
 | 1a — Account Balance | `GET /accounts/{accountNumber}/balance` | DB-backed | H2 (embedded, file-based) |
-| 1b — Customer Proxy | `GET /customers/{customerId}` | Managed proxy | **DummyJSON** (`https://dummyjson.com/users/{id}`) — a free, public mock REST API with realistic user records and a predictable 404 for unknown IDs; chosen because it needs no auth/API key and its backend URL is kept configurable (`local-entries`) so tests don't hard-depend on it being reachable || 1c — Loan Eligibility | `POST /loans/eligibility` | SOAP → REST transform | **sondahub.com's public "Bank" SOAP mock** (`https://api.sondahub.com/soap/bank`) — see "Assumptions" below for why this is a repurposed generic SOAP service rather than a dedicated eligibility API |
+| 1b — Customer Proxy | `GET /customers/{customerId}` | Managed proxy | **DummyJSON** (`https://dummyjson.com/users/{id}`) — a free, public mock REST API with realistic user records and a predictable 404 for unknown IDs; chosen because it needs no auth/API key and its backend URL is kept configurable (`local-entries`) so tests don't hard-depend on it being reachable |
+| 1c — Loan Eligibility | `POST /loans/eligibility` | SOAP → REST transform | **sondahub.com's public "Bank" SOAP mock** (`https://api.sondahub.com/soap/bank`) — see "Assumptions" below for why this is a repurposed generic SOAP service rather than a dedicated eligibility API |
 
 (The "1a/1b/1c" labels mirror the three parts in the original assignment brief and are reused
 throughout this README for quick cross-reference.)
@@ -181,15 +182,66 @@ artifact → Test MI Integrations → Deploy/Update APIM APIs → Post-Deploy Ga
 Verification. A `prod` build runs the same structure but the deployment stages are skipped
 and a placeholder stage logs that prod isn't connected in this assessment.
 
-## Submission checklist
+## How to test the APIs
 
-- [x] MI project with all three integrations (`mi-integration/`)
-- [x] DB schema + seed script (`db/schema.sql`, `db/seed.sql`)
-- [x] APIM API definitions / apictl project + API Product (`apim/`)
-- [x] Jenkinsfile (repo root) — demonstrated with a full green run (all stages passing,
-      including live gateway verification of all three APIs) and a deliberately-broken run
-      (a failing test case) that stopped the pipeline immediately and skipped all
-      downstream deployment/verification stages, proving failures aren't silently absorbed
-- [x] README.md (this file)
-- [ ] 5-minute screen recording walking through a live call to each API (success + error case
-      per API, through the APIM gateway)
+There are two levels to test at: directly against Micro Integrator (bypassing APIM), or
+through the APIM gateway (the "real" path, with OAuth2 security enforced).
+
+### 1. Direct-to-MI smoke test (fast, no auth)
+
+Runs one success case + the required error cases for all three APIs, plus the chained
+customer→account workflow test, against MI directly:
+
+```powershell
+pwsh scripts/test-apis.ps1 -BaseUrl http://localhost:8290
+```
+
+Expect `11 passed, 0 failed`. This is also what the Jenkinsfile runs in its
+"Test MI Integrations (dev)" stage after every deploy.
+
+### 2. Through-the-gateway test (with OAuth2 security)
+
+This is the path a real client uses — it proves the gateway is actually enforcing security,
+not just that MI works.
+
+**Get a token** (client-credentials grant via `apictl`, run from a host that has `apictl`
+installed and network access to the APIM container — the `jenkins` container already has
+both):
+
+```powershell
+docker exec jenkins apictl login dev -u admin -p admin -k
+docker exec jenkins apictl get keys -n AccountsBalanceAPI -v 1.0.0 -e dev --provider admin -k
+```
+
+This prints a bearer JWT. Repeat with `-n CustomersAPI` / `-n LoansEligibilityAPI` for the
+other two APIs (each API's subscription requires its own token).
+
+**Call the API through the gateway:**
+
+```powershell
+docker exec jenkins curl -sk -H "Authorization: ******" `
+  https://jamii-am:8243/accounts/1.0.0/1000000001/balance
+```
+
+**Verify security is enforced** — a request with no token, or an invalid one, should be
+rejected (`401`/`403`) before it ever reaches MI:
+
+```powershell
+docker exec jenkins curl -sk -o NUL -w "%{http_code}" https://jamii-am:8243/accounts/1.0.0/1000000001/balance
+docker exec jenkins curl -sk -o NUL -w "%{http_code}" -H "Authorization: ******" https://jamii-am:8243/accounts/1.0.0/1000000001/balance
+```
+
+### 3. Manual chained workflow (customer → account → balance)
+
+Demonstrates the realistic two-step lookup described above, using the one demo customer
+(`customerId=3`) wired up with account numbers:
+
+```powershell
+$customer = Invoke-RestMethod -Uri "http://localhost:8290/customers/3"
+$customer.accountNumbers   # -> "1294572986", "1267093567"
+
+Invoke-RestMethod -Uri "http://localhost:8290/accounts/$($customer.accountNumbers[0])/balance"
+```
+
+Any other `customerId` (e.g. `1`) returns no `accountNumbers` field — there is nothing to
+chain for it, by design (see "Chained demo workflow" above).
