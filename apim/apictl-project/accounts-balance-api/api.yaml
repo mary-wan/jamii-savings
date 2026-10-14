@@ -1,0 +1,40 @@
+type: api
+version: v4.7.0
+data:
+  name: AccountsBalanceAPI
+  description: |
+    Returns the balance for a Jamii Savings account, backed by an H2 datasource queried through WSO2 Micro Integrator.
+  context: /accounts
+  version: 1.0.0
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  isRevision: false
+  revisionId: 0
+  type: HTTP
+  transport:
+  - http
+  - https
+  policies:
+  - Silver
+  visibility: PUBLIC
+  endpointConfig:
+    endpoint_type: http
+    production_endpoints:
+      url: http://jamii-mi:8290/accounts
+    sandbox_endpoints:
+      url: http://jamii-mi:8290/accounts
+  endpointImplementationType: ENDPOINT
+  websubSubscriptionConfiguration: null
+  operations:
+  - target: /{accountNumber}/balance
+    verb: GET
+    authType: Application & Application User
+    throttlingPolicy: Unlimited
+    operationPolicies:
+      request:
+      - policyName: addHeader
+        policyVersion: v3
+        policyId: c80405fb-9bb9-481f-9e4a-51b9ae0f4f76
+        parameters:
+          headerName: X-Gateway-Processed-By
+          headerValue: Jamii-APIM-Gateway

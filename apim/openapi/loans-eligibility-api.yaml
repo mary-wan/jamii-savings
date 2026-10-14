@@ -1,0 +1,102 @@
+openapi: 3.0.1
+info:
+  title: Loans Eligibility API
+  description: >
+    Accepts a JSON eligibility request, calls a public SOAP test service
+    (sondahub.com's generic "Bank" SOAP sandbox) to retrieve customer KYC/risk
+    data, and returns a JSON eligibility decision. NOTE: the SOAP backend has
+    no native "eligibility" operation - the eligibility rule is applied
+    entirely in the Micro Integrator mediation layer. See README for details.
+  version: "1.0.0"
+servers:
+  - url: https://localhost:8243/loans/1.0.0
+paths:
+  /eligibility:
+    post:
+      operationId: checkLoanEligibility
+      summary: Check loan eligibility for a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EligibilityRequest"
+      responses:
+        "200":
+          description: Eligibility decision returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EligibilityResponse"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer not found (SOAP Fault code=not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SOAP backend unavailable or returned an unexpected fault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SOAP backend response timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - default: []
+components:
+  schemas:
+    EligibilityRequest:
+      type: object
+      required: [customerId, requestedAmount]
+      properties:
+        customerId:
+          type: integer
+        requestedAmount:
+          type: number
+    EligibilityResponse:
+      type: object
+      properties:
+        customerId:
+          type: string
+        eligible:
+          type: boolean
+        riskScore:
+          type: integer
+        reason:
+          type: string
+        requestId:
+          type: string
+        correlationId:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+  securitySchemes:
+    default:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://localhost:9443/oauth2/token
+          scopes: {}
+security:
+  - default: []

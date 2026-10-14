@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api context="/accounts" name="AccountsBalanceAPI" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="GET" uri-template="/{accountNumber}/balance">
+        <inSequence>
+            <property expression="get-property('uri.var.accountNumber')" name="accountNumber" scope="default" type="STRING"/>
+            <!-- uuid() is not a supported Synapse XPath function in MI 4.6.0; Axis2 already
+                 generates a unique MessageID (urn:uuid:...) per request, so reuse that -
+                 stripping the "urn:uuid:" prefix so the response only shows the bare UUID. -->
+            <property expression="substring-after(get-property('MessageID'), 'urn:uuid:')" name="requestId" scope="default" type="STRING"/>
+            <property expression="fn:concat(get-property('SYSTEM_DATE','yyyy-MM-dd'),'T',get-property('SYSTEM_DATE','HH:mm:ss'))" name="timestamp" scope="default" type="STRING"/>
+
+            <!-- Mask account number for logs: show only the last 4 digits -->
+            <property expression="fn:concat('******', fn:substring(get-property('accountNumber'), string-length(get-property('accountNumber')) - 3))" name="maskedAccountNumber" scope="default" type="STRING"/>
+
+            <log category="INFO" level="custom">
+                <property name="event" value="REQUEST_IN"/>
+                <property name="api" value="AccountsBalanceAPI"/>
+                <property expression="get-property('requestId')" name="requestId"/>
+                <property expression="get-property('maskedAccountNumber')" name="accountNumber"/>
+            </log>
+
+            <!-- 400: malformed input - account number must be a 10-digit numeric string -->
+            <filter regex="^[0-9]{10}$" source="get-property('accountNumber')">
+                <then>
+                    <log category="INFO" level="custom">
+                        <property name="event" value="BACKEND_CALL"/>
+                        <property name="backend" value="H2:accounts"/>
+                        <property expression="get-property('requestId')" name="requestId"/>
+                        <property expression="get-property('maskedAccountNumber')" name="accountNumber"/>
+                    </log>
+
+                    <dblookup>
+                        <connection>
+                            <pool>
+                                <dsName>jdbc/JamiiSavingsDS</dsName>
+                            </pool>
+                        </connection>
+                        <statement>
+                            <sql>SELECT account_number, status, balance_amount, currency FROM accounts WHERE account_number = ?</sql>
+                            <parameter expression="get-property('accountNumber')" type="VARCHAR"/>
+                            <result column="status" name="accStatus"/>
+                            <result column="balance_amount" name="balanceAmount"/>
+                            <result column="currency" name="currency"/>
+                        </statement>
+                    </dblookup>
+
+                    <!-- If no row matched, dblookup leaves the result properties unset -->
+                    <filter xpath="boolean(get-property('accStatus'))">
+                        <then>
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                        "accountNumber": "$1",
+                                        "status": "$2",
+                                        "balance": {
+                                            "amount": $3,
+                                            "currency": "$4"
+                                        },
+                                        "requestId": "$5",
+                                        "timestamp": "$6"
+                                    }
+                                </format>
+                                <args>
+                                    <arg evaluator="xml" expression="get-property('accountNumber')"/>
+                                    <arg evaluator="xml" expression="get-property('accStatus')"/>
+                                    <arg evaluator="xml" expression="get-property('balanceAmount')"/>
+                                    <arg evaluator="xml" expression="get-property('currency')"/>
+                                    <arg evaluator="xml" expression="get-property('requestId')"/>
+                                    <arg evaluator="xml" expression="get-property('timestamp')"/>
+                                </args>
+                            </payloadFactory>
+                            <property name="HTTP_SC" scope="axis2" type="STRING" value="200"/>
+                            <property name="messageType" scope="axis2" type="STRING" value="application/json"/>
+
+                            <log category="INFO" level="custom">
+                                <property name="event" value="RESPONSE_OUT"/>
+                                <property name="api" value="AccountsBalanceAPI"/>
+                                <property expression="get-property('requestId')" name="requestId"/>
+                                <property name="httpStatus" value="200"/>
+                            </log>
+
+                            <respond/>
+                        </then>
+                        <else>
+                            <!-- 404: account number is well-formed but no such account exists -->
+                            <property name="errorCode" scope="default" type="STRING" value="ACCOUNT_NOT_FOUND"/>
+                            <property name="errorMessage" scope="default" type="STRING" value="No account was found for the given account number."/>
+                            <property name="httpStatus" scope="default" type="STRING" value="404"/>
+                            <sequence key="build-error-response"/>
+                        </else>
+                    </filter>
+                </then>
+                <else>
+                    <!-- 400: account number failed format validation -->
+                    <property name="errorCode" scope="default" type="STRING" value="VALIDATION_ERROR"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="accountNumber must be a 10-digit numeric string."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="400"/>
+                    <sequence key="build-error-response"/>
+                </else>
+            </filter>
+        </inSequence>
+
+        <faultSequence>
+            <!-- Any unhandled error here (e.g. DB connection failure) gets a distinct,
+                 safe error response instead of a raw stack trace / generic 500. -->
+            <log category="ERROR" level="full">
+                <property name="event" value="DB_ERROR"/>
+                <property name="api" value="AccountsBalanceAPI"/>
+                <property expression="get-property('requestId')" name="requestId"/>
+            </log>
+            <property name="errorCode" scope="default" type="STRING" value="DB_ERROR"/>
+            <property name="errorMessage" scope="default" type="STRING" value="A database error occurred while processing your request. Please try again later."/>
+            <property name="httpStatus" scope="default" type="STRING" value="502"/>
+            <sequence key="build-error-response"/>
+        </faultSequence>
+    </resource>
+</api>

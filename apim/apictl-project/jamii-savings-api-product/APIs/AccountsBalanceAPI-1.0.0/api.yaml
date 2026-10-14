@@ -1,0 +1,121 @@
+type: api
+version: v4.7.0
+data:
+  id: 928bd454-5760-4bf0-b810-846668bf9f9d
+  name: AccountsBalanceAPI
+  displayName: AccountsBalanceAPI
+  description: |
+    Returns the balance for a Jamii Savings account, backed by an H2 datasource queried through WSO2 Micro Integrator.
+  context: /accounts
+  version: 1.0.0
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  responseCachingEnabled: false
+  cacheTimeout: 300
+  hasThumbnail: false
+  isDefaultVersion: false
+  isRevision: false
+  revisionId: 0
+  enableSchemaValidation: false
+  enableSubscriberVerification: false
+  type: HTTP
+  audiences:
+   - all
+  transport:
+   - http
+   - https
+  tags: []
+  policies:
+   - Silver
+  organizationPolicies: []
+  authorizationHeader: Authorization
+  apiKeyHeader: ApiKey
+  securityScheme:
+   - oauth_basic_auth_api_key_mandatory
+   - oauth2
+  visibility: PUBLIC
+  visibleRoles: []
+  visibleTenants: []
+  visibleOrganizations:
+   - carbon.super
+  mediationPolicies: []
+  apiHubPolicies: []
+  subscriptionAvailability: CURRENT_TENANT
+  subscriptionAvailableTenants: []
+  additionalProperties: []
+  additionalPropertiesMap: {}
+  accessControl: NONE
+  accessControlRoles: []
+  businessInformation: {}
+  corsConfiguration:
+    corsConfigurationEnabled: false
+    accessControlAllowOrigins:
+     - '*'
+    accessControlAllowCredentials: false
+    accessControlAllowHeaders:
+     - authorization
+     - Access-Control-Allow-Origin
+     - Content-Type
+     - SOAPAction
+     - apikey
+     - Internal-Key
+    accessControlAllowMethods:
+     - GET
+     - PUT
+     - POST
+     - DELETE
+     - PATCH
+     - OPTIONS
+  websubSubscriptionConfiguration:
+    enable: false
+    secret: ""
+    signingAlgorithm: SHA1
+    signatureHeader: x-hub-signature
+  createdTime: "1791843679836"
+  lastUpdatedTimestamp: "1791843680063"
+  lastUpdatedTime: 2026-10-12 22:21:20.063
+  endpointConfig:
+    endpoint_type: http
+    sandbox_endpoints:
+      url: http://jamii-mi:8290/accounts
+    production_endpoints:
+      url: http://jamii-mi:8290/accounts
+  endpointImplementationType: ENDPOINT
+  subtypeConfiguration:
+    subtype: DEFAULT
+  scopes: []
+  operations:
+   -
+    id: ""
+    target: "/{accountNumber}/balance"
+    verb: GET
+    authType: Application & Application User
+    throttlingPolicy: Unlimited
+    scopes: []
+    usedProductIds: []
+    operationPolicies:
+      request:
+       -
+        policyName: addHeader
+        policyVersion: v3
+        policyType: common
+        policyId: 6f06f302-3e79-4296-b1a5-633e123f1e98
+        parameters:
+          headerValue: Jamii-APIM-Gateway
+          headerName: X-Gateway-Processed-By
+      response: []
+      fault: []
+    operationHubPolicies: []
+  categories: []
+  keyManagers:
+   - all
+  advertiseInfo:
+    advertised: false
+    apiOwner: admin
+    vendor: WSO2
+  gatewayVendor: wso2
+  gatewayType: wso2/synapse
+  initiatedFromGateway: false
+  asyncTransportProtocols: []
+  egress: false
+  organizationId: carbon.super

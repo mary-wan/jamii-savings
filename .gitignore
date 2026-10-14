@@ -1,0 +1,35 @@
+# Maven
+target/
+*.class
+
+# MI / Carbon
+**/repository/logs/
+**/repository/tmp/
+*.car
+
+# H2 database files (generated at runtime; schema/seed scripts are committed instead)
+db/*.mv.db
+db/*.trace.db
+
+# Docker volumes / local state
+docker/volumes/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# apictl generated/local state
+apim/apictl-project/**/target/
+
+_docs/

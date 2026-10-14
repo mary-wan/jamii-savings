@@ -1,0 +1,27 @@
+type: api
+version: v4.7.0
+data:
+  name: CustomersAPI
+  description: |
+    Pass-through/managed proxy in front of the public DummyJSON mock REST API (https://dummyjson.com), fronted by WSO2 Micro Integrator for correlation ID handling, header curation, timeout handling, and upstream error mapping.
+  context: /customers
+  version: 1.0.0
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  isRevision: false
+  revisionId: 0
+  type: HTTP
+  transport:
+  - http
+  - https
+  policies:
+  - Bronze
+  visibility: PUBLIC
+  endpointConfig:
+    endpoint_type: http
+    production_endpoints:
+      url: http://jamii-mi:8290/customers
+    sandbox_endpoints:
+      url: http://jamii-mi:8290/customers
+  endpointImplementationType: ENDPOINT
+  websubSubscriptionConfiguration: null

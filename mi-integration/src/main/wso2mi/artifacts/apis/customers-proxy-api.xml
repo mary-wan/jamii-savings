@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    1b: Customer Proxy - GET /customers/{customerId}
+
+    Fronts the public DummyJSON mock REST API (https://dummyjson.com/users/{id})
+    with a pass-through/managed proxy: correlation-ID handling, header
+    stripping, a backend timeout, and response curation (sensitive fields such
+    as password/SSN/bank/crypto details are dropped rather than relayed).
+
+    Backend base URL is NOT hardcoded here - see
+    local-entries/CustomerBackendBaseUrl.xml.
+-->
+<api context="/customers" name="CustomersProxyAPI" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="GET" uri-template="/{customerId}">
+        <inSequence>
+            <property expression="get-property('uri.var.customerId')" name="customerId" scope="default" type="STRING"/>
+            <!-- strip the "urn:uuid:" prefix so the response only shows the bare UUID -->
+            <property expression="substring-after(get-property('MessageID'), 'urn:uuid:')" name="requestId" scope="default" type="STRING"/>
+
+            <!-- Correlation ID: reuse the caller's if supplied, otherwise mint one from the
+                 Axis2 MessageID so every request/response pair remains traceable. -->
+            <property expression="get-property('transport', 'X-Correlation-ID')" name="correlationId" scope="default" type="STRING"/>
+            <filter xpath="not(boolean(get-property('correlationId')))">
+                <then>
+                    <property expression="get-property('requestId')" name="correlationId" scope="default" type="STRING"/>
+                </then>
+            </filter>
+
+            <log category="INFO" level="custom">
+                <property name="event" value="REQUEST_IN"/>
+                <property name="api" value="CustomersProxyAPI"/>
+                <property expression="get-property('requestId')" name="requestId"/>
+                <property expression="get-property('correlationId')" name="correlationId"/>
+                <property expression="get-property('customerId')" name="customerId"/>
+            </log>
+
+            <!-- 400: malformed input - customerId must be a positive integer -->
+            <filter regex="^[0-9]+$" source="get-property('customerId')">
+                <then>
+                    <!-- Hybrid account-number enrichment: resolves to a local-entry only for
+                         the handful of demo customers wired up in local-entries/
+                         CustomerAccountSnippetUrl_<id>.xml; empty/falsy for everyone else,
+                         which naturally falls back to the standard DummyJSON backend below. -->
+                    <property expression="get-property(fn:concat('CustomerAccountSnippetUrl_', get-property('customerId')))" name="accountSnippetUrl" scope="default" type="STRING"/>
+
+                    <property expression="get-property('CustomerBackendBaseUrl')" name="backendBaseUrl" scope="default" type="STRING"/>
+                    <property expression="fn:concat(get-property('backendBaseUrl'), '/users/', get-property('customerId'))" name="backendUrl" scope="default" type="STRING"/>
+                    <filter xpath="boolean(get-property('accountSnippetUrl'))">
+                        <then>
+                            <property expression="get-property('accountSnippetUrl')" name="backendUrl" scope="default" type="STRING"/>
+                        </then>
+                    </filter>
+
+                    <!-- Strip inbound transport headers so nothing from the original
+                         client request (cookies, auth, etc.) leaks to the backend. -->
+                    <property action="remove" name="TRANSPORT_HEADERS" scope="axis2"/>
+                    <property action="remove" name="EXCESS_TRANSPORT_HEADERS" scope="axis2"/>
+                    <!-- Without this, Synapse re-appends the inbound resource path
+                         (e.g. "/2") onto the outgoing backend URL, producing .../users/2/2. -->
+                    <property action="remove" name="REST_URL_POSTFIX" scope="axis2"/>
+                    <header name="X-Correlation-ID" scope="transport" expression="get-property('correlationId')"/>
+                    <property name="HTTP_METHOD" scope="axis2" type="STRING" value="GET"/>
+                    <property expression="get-property('backendUrl')" name="uri.var.backendUrl" scope="default" type="STRING"/>
+
+                    <log category="INFO" level="custom">
+                        <property name="event" value="BACKEND_CALL"/>
+                        <property name="backend" value="DummyJSON"/>
+                        <property expression="get-property('requestId')" name="requestId"/>
+                        <property expression="get-property('correlationId')" name="correlationId"/>
+                        <property expression="get-property('backendUrl')" name="backendUrl"/>
+                    </log>
+
+                    <call blocking="true" description="Call DummyJSON customer backend">
+                        <endpoint>
+                            <http method="get" uri-template="{uri.var.backendUrl}">
+                                <timeout>
+                                    <duration>5000</duration>
+                                    <responseAction>fault</responseAction>
+                                </timeout>
+                                <suspendOnFailure>
+                                    <errorCodes>-1</errorCodes>
+                                    <initialDuration>0</initialDuration>
+                                    <progressionFactor>1.0</progressionFactor>
+                                    <maximumDuration>0</maximumDuration>
+                                </suspendOnFailure>
+                                <markForSuspension>
+                                    <errorCodes>-1</errorCodes>
+                                </markForSuspension>
+                            </http>
+                        </endpoint>
+                    </call>
+
+                    <property expression="get-property('axis2', 'HTTP_SC')" name="backendHttpStatus" scope="default" type="STRING"/>
+
+                    <!-- 2xx: curate the backend's response - drop password/SSN/bank/crypto
+                         fields instead of relaying everything DummyJSON returns. The
+                         "customerId" field always comes from the already-validated inbound
+                         property (not the backend body), since the two possible backends
+                         here (real DummyJSON vs. the account-number demo snippet) don't use
+                         the same field name for it ("id" vs. "customerId"). -->
+                    <filter regex="^2[0-9]{2}$" source="get-property('backendHttpStatus')">
+                        <then>
+                            <!-- Only the demo customer(s) wired to an account-number snippet
+                                 (see accountSnippetUrl above) get an "accountNumbers" array in
+                                 the response; everyone else gets the standard shape. -->
+                            <filter xpath="boolean(get-property('accountSnippetUrl'))">
+                                <then>
+                                    <payloadFactory media-type="json">
+                                        <format>
+                                            {
+                                                "customerId": "$1",
+                                                "firstName": "$2",
+                                                "lastName": "$3",
+                                                "email": "$4",
+                                                "phone": "$5",
+                                                "username": "$6",
+                                                "accountNumbers": $7,
+                                                "requestId": "$8",
+                                                "correlationId": "$9"
+                                            }
+                                        </format>
+                                        <args>
+                                            <arg evaluator="xml" expression="get-property('customerId')"/>
+                                            <arg evaluator="json" expression="$.firstName"/>
+                                            <arg evaluator="json" expression="$.lastName"/>
+                                            <arg evaluator="json" expression="$.email"/>
+                                            <arg evaluator="json" expression="$.phone"/>
+                                            <arg evaluator="json" expression="$.username"/>
+                                            <arg evaluator="json" expression="$.accountNumbers"/>
+                                            <arg evaluator="xml" expression="get-property('requestId')"/>
+                                            <arg evaluator="xml" expression="get-property('correlationId')"/>
+                                        </args>
+                                    </payloadFactory>
+                                </then>
+                                <else>
+                                    <payloadFactory media-type="json">
+                                        <format>
+                                            {
+                                                "customerId": "$1",
+                                                "firstName": "$2",
+                                                "lastName": "$3",
+                                                "email": "$4",
+                                                "phone": "$5",
+                                                "username": "$6",
+                                                "requestId": "$7",
+                                                "correlationId": "$8"
+                                            }
+                                        </format>
+                                        <args>
+                                            <arg evaluator="xml" expression="get-property('customerId')"/>
+                                            <arg evaluator="json" expression="$.firstName"/>
+                                            <arg evaluator="json" expression="$.lastName"/>
+                                            <arg evaluator="json" expression="$.email"/>
+                                            <arg evaluator="json" expression="$.phone"/>
+                                            <arg evaluator="json" expression="$.username"/>
+                                            <arg evaluator="xml" expression="get-property('requestId')"/>
+                                            <arg evaluator="xml" expression="get-property('correlationId')"/>
+                                        </args>
+                                    </payloadFactory>
+                                </else>
+                            </filter>
+                            <property name="HTTP_SC" scope="axis2" type="STRING" value="200"/>
+                            <property name="messageType" scope="axis2" type="STRING" value="application/json"/>
+                            <header name="X-Correlation-ID" scope="transport" expression="get-property('correlationId')"/>
+
+                            <log category="INFO" level="custom">
+                                <property name="event" value="RESPONSE_OUT"/>
+                                <property name="api" value="CustomersProxyAPI"/>
+                                <property expression="get-property('requestId')" name="requestId"/>
+                                <property name="httpStatus" value="200"/>
+                            </log>
+
+                            <respond/>
+                        </then>
+                        <else>
+                            <!-- Defensive fallback only: in practice a non-2xx HTTP response from
+                                 this endpoint/method combination raises to <faultSequence> before
+                                 control returns here, so the real 404/upstream-error handling lives
+                                 there (see faultSequence below). -->
+                            <property name="errorCode" scope="default" type="STRING" value="UPSTREAM_ERROR"/>
+                            <property name="errorMessage" scope="default" type="STRING" value="The customer backend returned an unexpected error."/>
+                            <property name="httpStatus" scope="default" type="STRING" value="502"/>
+                            <sequence key="build-error-response"/>
+                        </else>
+                    </filter>
+                </then>
+                <else>
+                    <!-- 400: customerId failed format validation -->
+                    <property name="errorCode" scope="default" type="STRING" value="VALIDATION_ERROR"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="customerId must be a positive integer."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="400"/>
+                    <sequence key="build-error-response"/>
+                </else>
+            </filter>
+        </inSequence>
+
+        <faultSequence>
+            <!-- Synapse routes a <call> here both for genuine transport failures
+                 (connection refused, DNS failure, the endpoint timeout firing) AND
+                 for any non-2xx HTTP response from the backend (e.g. DummyJSON's
+                 404) - the latter never returns control to inSequence. ERROR_MESSAGE
+                 carries the raw detail in both cases, so we inspect it to tell these
+                 apart rather than treating every fault as "backend unavailable". -->
+            <property expression="get-property('ERROR_MESSAGE')" name="backendErrorMessage" scope="default" type="STRING"/>
+            <log category="ERROR" level="custom">
+                <property name="event" value="BACKEND_CALL_FAILED"/>
+                <property name="api" value="CustomersProxyAPI"/>
+                <property expression="get-property('requestId')" name="requestId"/>
+                <property expression="get-property('ERROR_CODE')" name="errorCode"/>
+                <property expression="get-property('backendErrorMessage')" name="backendErrorMessage"/>
+            </log>
+            <filter xpath="contains(get-property('backendErrorMessage'), '404')">
+                <then>
+                    <!-- The backend responded; it just didn't find the customer. -->
+                    <property name="errorCode" scope="default" type="STRING" value="CUSTOMER_NOT_FOUND"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="No customer was found for the given customer ID."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="404"/>
+                </then>
+                <else>
+                    <filter xpath="contains(get-property('backendErrorMessage'), 'Transport error')">
+                        <then>
+                            <!-- The backend responded with some other non-2xx HTTP status. -->
+                            <property name="errorCode" scope="default" type="STRING" value="UPSTREAM_ERROR"/>
+                            <property name="errorMessage" scope="default" type="STRING" value="The customer backend returned an unexpected error."/>
+                            <property name="httpStatus" scope="default" type="STRING" value="502"/>
+                        </then>
+                        <else>
+                            <filter xpath="contains(get-property('backendErrorMessage'), 'time out') or contains(get-property('backendErrorMessage'), 'timed out') or contains(get-property('backendErrorMessage'), 'Timeout')">
+                                <then>
+                                    <!-- The <call> endpoint's own <timeout> fired, or the socket timed out. -->
+                                    <property name="errorCode" scope="default" type="STRING" value="BACKEND_TIMEOUT"/>
+                                    <property name="errorMessage" scope="default" type="STRING" value="The customer backend did not respond in time."/>
+                                    <property name="httpStatus" scope="default" type="STRING" value="504"/>
+                                </then>
+                                <else>
+                                    <!-- No HTTP response at all: connection refused, DNS failure, etc. -->
+                                    <property name="errorCode" scope="default" type="STRING" value="BACKEND_UNAVAILABLE"/>
+                                    <property name="errorMessage" scope="default" type="STRING" value="The customer backend could not be reached. Please try again later."/>
+                                    <property name="httpStatus" scope="default" type="STRING" value="502"/>
+                                </else>
+                            </filter>
+                        </else>
+                    </filter>
+                </else>
+            </filter>
+            <sequence key="build-error-response"/>
+        </faultSequence>
+    </resource>
+</api>

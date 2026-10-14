@@ -1,0 +1,113 @@
+type: api
+version: v4.7.0
+data:
+  id: 3d84a747-aa7f-44e3-a3cd-6225d30e2dfa
+  name: LoansEligibilityAPI
+  displayName: LoansEligibilityAPI
+  description: |
+    Accepts a JSON eligibility request, calls a public SOAP test service (sondahub.com's generic "Bank" SOAP sandbox) to retrieve customer KYC/risk data, and returns a JSON eligibility decision. NOTE: the SOAP backend has no native "eligibility" operation - the eligibility rule is applied entirely in the Micro Integrator mediation layer. See README for details.
+  context: /loans
+  version: 1.0.0
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  responseCachingEnabled: false
+  cacheTimeout: 300
+  hasThumbnail: false
+  isDefaultVersion: false
+  isRevision: false
+  revisionId: 0
+  enableSchemaValidation: false
+  enableSubscriberVerification: false
+  type: HTTP
+  audiences:
+   - all
+  transport:
+   - http
+   - https
+  tags: []
+  policies:
+   - Silver
+  organizationPolicies: []
+  authorizationHeader: Authorization
+  apiKeyHeader: ApiKey
+  securityScheme:
+   - oauth_basic_auth_api_key_mandatory
+   - oauth2
+  visibility: PUBLIC
+  visibleRoles: []
+  visibleTenants: []
+  visibleOrganizations:
+   - carbon.super
+  mediationPolicies: []
+  apiHubPolicies: []
+  subscriptionAvailability: CURRENT_TENANT
+  subscriptionAvailableTenants: []
+  additionalProperties: []
+  additionalPropertiesMap: {}
+  accessControl: NONE
+  accessControlRoles: []
+  businessInformation: {}
+  corsConfiguration:
+    corsConfigurationEnabled: false
+    accessControlAllowOrigins:
+     - '*'
+    accessControlAllowCredentials: false
+    accessControlAllowHeaders:
+     - authorization
+     - Access-Control-Allow-Origin
+     - Content-Type
+     - SOAPAction
+     - apikey
+     - Internal-Key
+    accessControlAllowMethods:
+     - GET
+     - PUT
+     - POST
+     - DELETE
+     - PATCH
+     - OPTIONS
+  websubSubscriptionConfiguration:
+    enable: false
+    secret: ""
+    signingAlgorithm: SHA1
+    signatureHeader: x-hub-signature
+  createdTime: "1791843685883"
+  lastUpdatedTimestamp: "1791843686151"
+  lastUpdatedTime: 2026-10-12 22:21:26.151
+  endpointConfig:
+    endpoint_type: http
+    sandbox_endpoints:
+      url: http://jamii-mi:8290/loans
+    production_endpoints:
+      url: http://jamii-mi:8290/loans
+  endpointImplementationType: ENDPOINT
+  subtypeConfiguration:
+    subtype: DEFAULT
+  scopes: []
+  operations:
+   -
+    id: ""
+    target: /eligibility
+    verb: POST
+    authType: Application & Application User
+    throttlingPolicy: Unlimited
+    scopes: []
+    usedProductIds: []
+    operationPolicies:
+      request: []
+      response: []
+      fault: []
+    operationHubPolicies: []
+  categories: []
+  keyManagers:
+   - all
+  advertiseInfo:
+    advertised: false
+    apiOwner: admin
+    vendor: WSO2
+  gatewayVendor: wso2
+  gatewayType: wso2/synapse
+  initiatedFromGateway: false
+  asyncTransportProtocols: []
+  egress: false
+  organizationId: carbon.super

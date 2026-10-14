@@ -1,0 +1,56 @@
+networks:
+  jamii-net:
+    driver: bridge
+
+volumes:
+  mi-dbdata:
+  apim-data:
+
+services:
+  wso2mi:
+    build:
+      context: .
+      dockerfile: mi.Dockerfile
+    image: jamii-savings/wso2mi:4.6.0-h2
+    container_name: jamii-mi
+    networks:
+      - jamii-net
+    ports:
+      - "8290:8290"   # HTTP passthrough (API invocation)
+      - "8253:8253"   # HTTPS passthrough
+      - "9164:9164"   # Micro Integrator management REST API
+    volumes:
+      # Schema/seed scripts read by the H2 datasource INIT clause (read-only).
+      # NOTE: the MI server process's actual working directory is CARBON_HOME
+      # (/home/wso2carbon/wso2mi-4.6.0), not /home/wso2carbon - relative paths in
+      # the datasource URL (./db/..., ./dbdata/...) resolve against CARBON_HOME.
+      - ../db:/home/wso2carbon/wso2mi-4.6.0/db:ro
+      # Writable location for the H2 database files; named volume persists
+      # data across container restarts.
+      - mi-dbdata:/home/wso2carbon/wso2mi-4.6.0/dbdata
+      # Drop the built Carbon Application in to be hot-deployed on startup.
+      # Read-write so the Jenkins pipeline can `docker cp` a freshly built
+      # .car in here for hot deployment during CI runs.
+      - ../mi-integration/target:/home/wso2carbon/wso2mi-4.6.0/repository/deployment/server/carbonapps
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9164/healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  wso2am:
+    image: wso2/wso2am:4.7.0
+    container_name: jamii-am
+    networks:
+      - jamii-net
+    ports:
+      - "9443:9443"   # APIM management / gateway HTTPS console
+      - "8243:8243"   # Gateway HTTPS
+      - "8280:8280"   # Gateway HTTP
+    volumes:
+      - apim-data:/home/wso2carbon/wso2am-4.7.0/repository/deployment/server
+    healthcheck:
+      test: ["CMD", "curl", "-sfk", "https://localhost:9443/services/Version"]
+      interval: 20s
+      timeout: 5s
+      retries: 10

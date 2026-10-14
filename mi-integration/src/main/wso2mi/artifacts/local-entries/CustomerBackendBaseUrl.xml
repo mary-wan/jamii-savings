@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Configurable base URL for the customer proxy's backend (1b).
+    Kept out of the API logic so it can be changed per-environment (or for
+    tests) without editing customers-proxy-api.xml itself.
+-->
+<localEntry key="CustomerBackendBaseUrl" xmlns="http://ws.apache.org/ns/synapse">https://dummyjson.com</localEntry>

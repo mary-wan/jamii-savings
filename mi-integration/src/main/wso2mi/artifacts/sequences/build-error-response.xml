@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Shared error-response sequence used by all Jamii Savings APIs (1a, 1b, 1c).
+
+    Expects these properties to be set by the caller before invoking this sequence:
+      - errorCode     (string)  e.g. "ACCOUNT_NOT_FOUND", "VALIDATION_ERROR", "DB_ERROR"
+      - errorMessage  (string)  human-readable, safe to expose to the client
+      - httpStatus    (string)  numeric HTTP status to set, e.g. "400", "404", "502"
+
+    Produces the common envelope:
+      {
+        "error": {
+          "code": "...",
+          "message": "...",
+          "requestId": "..."
+        }
+      }
+-->
+<sequence name="build-error-response" xmlns="http://ws.apache.org/ns/synapse">
+    <!-- Reuse the caller's requestId if already set (normal case); otherwise fall back
+         to the Axis2-generated MessageID, stripped of its "urn:uuid:" prefix. uuid() is
+         not a supported XPath function in MI 4.6.0. -->
+    <filter xpath="not(boolean(get-property('requestId')))">
+        <then>
+            <property expression="substring-after(get-property('MessageID'), 'urn:uuid:')" name="requestId" scope="default" type="STRING"/>
+        </then>
+    </filter>
+
+    <payloadFactory media-type="json">
+        <format>
+            {
+                "error": {
+                    "code": "$1",
+                    "message": "$2",
+                    "requestId": "$3"
+                }
+            }
+        </format>
+        <args>
+            <arg evaluator="xml" expression="get-property('errorCode')"/>
+            <arg evaluator="xml" expression="get-property('errorMessage')"/>
+            <arg evaluator="xml" expression="get-property('requestId')"/>
+        </args>
+    </payloadFactory>
+
+    <property expression="get-property('httpStatus')" name="HTTP_SC" scope="axis2" type="STRING"/>
+    <property name="messageType" scope="axis2" type="STRING" value="application/json"/>
+    <respond/>
+</sequence>

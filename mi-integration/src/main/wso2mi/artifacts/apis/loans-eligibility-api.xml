@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    1c: Loan Eligibility - POST /loans/eligibility
+
+    Accepts a JSON request, calls a public SOAP test service (sondahub.com's
+    "Bank" SOAP API) to fetch the customer's KYC status and risk score, and
+    transforms that into a clean JSON eligibility decision. SOAP Faults from
+    the backend are mapped to a safe REST error (no raw SOAP/XML ever reaches
+    the client).
+
+    IMPORTANT LIMITATION (documented, not hidden): sondahub.com is a generic
+    public SOAP sandbox/mock bank API (customers, accounts, cards,
+    transactions, transfers, fx rates) - it has NO dedicated "loan
+    eligibility" operation. We call its GetCustomer operation to obtain real
+    risk_score/kyc_status fields and apply our OWN eligibility business rule
+    on top of that data entirely within this mediation layer. The backend
+    itself has no concept of "eligibility" - don't misrepresent this.
+
+    Eligibility rule (documented, intentionally simple): a customer is
+    eligible when kyc_status = "verified" AND risk_score <= 50.
+-->
+<api context="/loans" name="LoansEligibilityAPI" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="POST" uri-template="/eligibility">
+        <inSequence>
+            <!-- strip the "urn:uuid:" prefix so the response only shows the bare UUID -->
+            <property expression="substring-after(get-property('MessageID'), 'urn:uuid:')" name="requestId" scope="default" type="STRING"/>
+            <property expression="get-property('transport', 'X-Correlation-ID')" name="correlationId" scope="default" type="STRING"/>
+            <filter xpath="not(boolean(get-property('correlationId')))">
+                <then>
+                    <property expression="get-property('requestId')" name="correlationId" scope="default" type="STRING"/>
+                </then>
+            </filter>
+
+            <property expression="json-eval($.customerId)" name="customerId" scope="default" type="STRING"/>
+            <property expression="json-eval($.requestedAmount)" name="requestedAmount" scope="default" type="STRING"/>
+
+            <log category="INFO" level="custom">
+                <property name="event" value="REQUEST_IN"/>
+                <property name="api" value="LoansEligibilityAPI"/>
+                <property expression="get-property('requestId')" name="requestId"/>
+                <property expression="get-property('correlationId')" name="correlationId"/>
+                <property expression="get-property('customerId')" name="customerId"/>
+            </log>
+
+            <!-- 400: customerId must be a positive integer, requestedAmount a positive number -->
+            <filter regex="^[0-9]+$" source="get-property('customerId')">
+                <then>
+                <filter regex="^[0-9]+(\.[0-9]+)?$" source="get-property('requestedAmount')">
+                <then>
+                    <property expression="get-property('LoanBackendBaseUrl')" name="backendUrl" scope="default" type="STRING"/>
+
+                    <!-- Build ONLY the SOAP Body content here. The http endpoint below uses
+                         format="soap11", which makes Synapse wrap this in a real SOAP 1.1
+                         envelope on the wire. Building the full envelope ourselves here
+                         double-wraps it and the backend rejects it ("root is
+                         <tns:GetCustomer>; a SOAP message is an Envelope"). -->
+                    <payloadFactory media-type="xml">
+                        <format>
+                            <tns:GetCustomer xmlns:tns="https://sondahub.com/soap/bank">
+                                <tns:id>$1</tns:id>
+                            </tns:GetCustomer>
+                        </format>
+                        <args>
+                            <arg evaluator="xml" expression="get-property('customerId')"/>
+                        </args>
+                    </payloadFactory>
+
+                    <property action="remove" name="TRANSPORT_HEADERS" scope="axis2"/>
+                    <property action="remove" name="EXCESS_TRANSPORT_HEADERS" scope="axis2"/>
+                    <property action="remove" name="REST_URL_POSTFIX" scope="axis2"/>
+                    <property name="HTTP_METHOD" scope="axis2" type="STRING" value="POST"/>
+                    <header name="SOAPAction" scope="transport" value="https://sondahub.com/soap/bank/GetCustomer"/>
+                    <property expression="get-property('backendUrl')" name="uri.var.backendUrl" scope="default" type="STRING"/>
+
+                    <log category="INFO" level="custom">
+                        <property name="event" value="BACKEND_CALL"/>
+                        <property name="backend" value="sondahub-bank-soap"/>
+                        <property expression="get-property('requestId')" name="requestId"/>
+                        <property expression="get-property('backendUrl')" name="backendUrl"/>
+                    </log>
+
+                    <!-- format="soap11" forces Synapse to serialize a real SOAP 1.1 envelope
+                         on the wire. Without it, the REST API's default (non-SOAP) formatting
+                         sends just the payloadFactory body content as raw XML, which sondahub
+                         rejects ("a SOAP message is an Envelope"). -->
+                    <call blocking="true" description="Call sondahub Bank SOAP service (GetCustomer)">
+                        <endpoint>
+                            <http method="post" uri-template="{uri.var.backendUrl}" format="soap11">
+                                <timeout>
+                                    <duration>5000</duration>
+                                    <responseAction>fault</responseAction>
+                                </timeout>
+                                <suspendOnFailure>
+                                    <errorCodes>-1</errorCodes>
+                                    <initialDuration>0</initialDuration>
+                                    <progressionFactor>1.0</progressionFactor>
+                                    <maximumDuration>0</maximumDuration>
+                                </suspendOnFailure>
+                                <markForSuspension>
+                                    <errorCodes>-1</errorCodes>
+                                </markForSuspension>
+                            </http>
+                        </endpoint>
+                    </call>
+
+                    <!-- The backend can return a SOAP Fault with HTTP 200 (observed for an
+                         unknown customerId), so Axis2 does NOT raise this to faultSequence -
+                         we must check for it explicitly here, before assuming success. -->
+                    <property expression="//*[local-name()='Fault']/*[local-name()='detail']/*[local-name()='ServiceFault']/*[local-name()='code']/text()" name="soapFaultCode" scope="default" type="STRING"/>
+                    <property expression="//*[local-name()='Fault']/*[local-name()='faultstring']/text()" name="soapFaultMessage" scope="default" type="STRING"/>
+
+                    <filter xpath="boolean(get-property('soapFaultCode'))">
+                        <then>
+                            <filter xpath="get-property('soapFaultCode') = 'not_found'">
+                                <then>
+                                    <property name="errorCode" scope="default" type="STRING" value="CUSTOMER_NOT_FOUND"/>
+                                    <property expression="fn:concat('No customer record found for the supplied customerId: ', get-property('soapFaultMessage'))" name="errorMessage" scope="default" type="STRING"/>
+                                    <property name="httpStatus" scope="default" type="STRING" value="404"/>
+                                </then>
+                                <else>
+                                    <!-- Any other documented ServiceFault from the backend -->
+                                    <property name="errorCode" scope="default" type="STRING" value="BACKEND_SERVICE_FAULT"/>
+                                    <property name="errorMessage" scope="default" type="STRING" value="The loan eligibility backend returned an unexpected fault."/>
+                                    <property name="httpStatus" scope="default" type="STRING" value="502"/>
+                                </else>
+                            </filter>
+                            <log category="WARN" level="custom">
+                                <property name="event" value="BACKEND_SOAP_FAULT"/>
+                                <property expression="get-property('requestId')" name="requestId"/>
+                                <property expression="get-property('soapFaultCode')" name="soapFaultCode"/>
+                            </log>
+                            <sequence key="build-error-response"/>
+                        </then>
+                        <else>
+
+                    <!-- Success: the response body IS the backend's SOAP envelope. Pull the
+                         fields we need by local-name() (the backend uses a default namespace,
+                         no prefix, in its responses). -->
+                    <property expression="//*[local-name()='risk_score']/text()" name="riskScore" scope="default" type="STRING"/>
+                    <property expression="//*[local-name()='kyc_status']/text()" name="kycStatus" scope="default" type="STRING"/>
+
+                    <filter xpath="get-property('kycStatus') = 'verified' and number(get-property('riskScore')) &lt;= 50">
+                        <then>
+                            <property name="eligible" scope="default" type="STRING" value="true"/>
+                            <property name="reason" scope="default" type="STRING" value="KYC verified and risk score within the acceptable threshold."/>
+                        </then>
+                        <else>
+                            <property name="eligible" scope="default" type="STRING" value="false"/>
+                            <filter xpath="get-property('kycStatus') != 'verified'">
+                                <then>
+                                    <property name="reason" scope="default" type="STRING" value="Customer KYC is not verified."/>
+                                </then>
+                                <else>
+                                    <property name="reason" scope="default" type="STRING" value="Customer risk score exceeds the acceptable threshold."/>
+                                </else>
+                            </filter>
+                        </else>
+                    </filter>
+
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "customerId": "$1",
+                                "eligible": $2,
+                                "riskScore": $3,
+                                "reason": "$4",
+                                "requestId": "$5",
+                                "correlationId": "$6"
+                            }
+                        </format>
+                        <args>
+                            <arg evaluator="xml" expression="get-property('customerId')"/>
+                            <arg evaluator="xml" expression="get-property('eligible')"/>
+                            <arg evaluator="xml" expression="get-property('riskScore')"/>
+                            <arg evaluator="xml" expression="get-property('reason')"/>
+                            <arg evaluator="xml" expression="get-property('requestId')"/>
+                            <arg evaluator="xml" expression="get-property('correlationId')"/>
+                        </args>
+                    </payloadFactory>
+                    <property name="HTTP_SC" scope="axis2" type="STRING" value="200"/>
+                    <property name="messageType" scope="axis2" type="STRING" value="application/json"/>
+                    <header name="X-Correlation-ID" scope="transport" expression="get-property('correlationId')"/>
+
+                    <log category="INFO" level="custom">
+                        <property name="event" value="RESPONSE_OUT"/>
+                        <property name="api" value="LoansEligibilityAPI"/>
+                        <property expression="get-property('requestId')" name="requestId"/>
+                        <property expression="get-property('eligible')" name="eligible"/>
+                        <property name="httpStatus" value="200"/>
+                    </log>
+
+                    <respond/>
+                        </else>
+                    </filter>
+                </then>
+                <else>
+                    <!-- 400: requestedAmount failed format validation -->
+                    <property name="errorCode" scope="default" type="STRING" value="VALIDATION_ERROR"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="requestedAmount must be a positive number."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="400"/>
+                    <sequence key="build-error-response"/>
+                </else>
+                </filter>
+                </then>
+                <else>
+                    <!-- 400: customerId failed format validation -->
+                    <property name="errorCode" scope="default" type="STRING" value="VALIDATION_ERROR"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="customerId must be a positive integer."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="400"/>
+                    <sequence key="build-error-response"/>
+                </else>
+            </filter>
+        </inSequence>
+
+        <faultSequence>
+            <!-- Only reached for transport-level failures: the backend's own SOAP Faults
+                 (e.g. unknown customer) come back as HTTP 200 and are handled inline above,
+                 in inSequence - they never reach this faultSequence. -->
+            <log category="ERROR" level="custom">
+                <property name="event" value="BACKEND_CALL_FAILED"/>
+                <property expression="get-property('requestId')" name="requestId"/>
+                <property expression="get-property('ERROR_CODE')" name="ERROR_CODE"/>
+                <property expression="get-property('ERROR_MESSAGE')" name="ERROR_MESSAGE"/>
+            </log>
+
+            <filter regex=".*(time out|timed out).*" source="get-property('ERROR_MESSAGE')">
+                <then>
+                    <property name="errorCode" scope="default" type="STRING" value="BACKEND_TIMEOUT"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="The loan eligibility backend did not respond in time."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="504"/>
+                </then>
+                <else>
+                    <property name="errorCode" scope="default" type="STRING" value="BACKEND_UNAVAILABLE"/>
+                    <property name="errorMessage" scope="default" type="STRING" value="The loan eligibility backend could not be reached. Please try again later."/>
+                    <property name="httpStatus" scope="default" type="STRING" value="502"/>
+                </else>
+            </filter>
+            <sequence key="build-error-response"/>
+        </faultSequence>
+    </resource>
+</api>

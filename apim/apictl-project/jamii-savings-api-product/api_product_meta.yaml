@@ -1,0 +1,8 @@
+deploy:
+  import:
+    importApis: true
+    preserveProvider: true
+    rotateRevision: false
+    updateApiProduct: true
+name: JamiiSavingsAPIProduct
+version: 1.0.0

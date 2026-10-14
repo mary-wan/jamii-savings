@@ -1,0 +1,27 @@
+type: api
+version: v4.7.0
+data:
+  name: LoansEligibilityAPI
+  description: |
+    Accepts a JSON eligibility request, calls a public SOAP test service (sondahub.com's generic "Bank" SOAP sandbox) to retrieve customer KYC/risk data, and returns a JSON eligibility decision. NOTE: the SOAP backend has no native "eligibility" operation - the eligibility rule is applied entirely in the Micro Integrator mediation layer. See README for details.
+  context: /loans
+  version: 1.0.0
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  isRevision: false
+  revisionId: 0
+  type: HTTP
+  transport:
+  - http
+  - https
+  policies:
+  - Silver
+  visibility: PUBLIC
+  endpointConfig:
+    endpoint_type: http
+    production_endpoints:
+      url: http://jamii-mi:8290/loans
+    sandbox_endpoints:
+      url: http://jamii-mi:8290/loans
+  endpointImplementationType: ENDPOINT
+  websubSubscriptionConfiguration: null

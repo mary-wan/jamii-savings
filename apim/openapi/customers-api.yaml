@@ -1,0 +1,100 @@
+openapi: 3.0.1
+info:
+  title: Customers API
+  description: >
+    Pass-through/managed proxy in front of the public DummyJSON mock REST API
+    (https://dummyjson.com), fronted by WSO2 Micro Integrator for correlation
+    ID handling, header curation, timeout handling, and upstream error mapping.
+  version: "1.0.0"
+servers:
+  - url: https://localhost:8243/customers/1.0.0
+paths:
+  /{customerId}:
+    get:
+      operationId: getCustomer
+      summary: Get customer profile
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          description: Numeric customer ID
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: Optional caller-supplied correlation ID; generated if absent
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+        "400":
+          description: Malformed customerId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer not found upstream
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream connection failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: Upstream response timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+        - default: []
+components:
+  schemas:
+    CustomerResponse:
+      type: object
+      properties:
+        customerId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        username:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+  securitySchemes:
+    default:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://localhost:9443/oauth2/token
+          scopes: {}
+security:
+  - default: []

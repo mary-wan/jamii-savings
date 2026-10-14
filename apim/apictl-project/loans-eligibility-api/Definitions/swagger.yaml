@@ -1,0 +1,100 @@
+components:
+  schemas:
+    EligibilityRequest:
+      properties:
+        customerId:
+          type: integer
+        requestedAmount:
+          type: number
+      required:
+      - customerId
+      - requestedAmount
+      type: object
+    EligibilityResponse:
+      properties:
+        correlationId:
+          type: string
+        customerId:
+          type: string
+        eligible:
+          type: boolean
+        reason:
+          type: string
+        requestId:
+          type: string
+        riskScore:
+          type: integer
+      type: object
+    ErrorResponse:
+      properties:
+        error:
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+          type: object
+      type: object
+  securitySchemes:
+    default:
+      flows:
+        clientCredentials:
+          scopes: {}
+          tokenUrl: https://localhost:9443/oauth2/token
+      type: oauth2
+info:
+  description: |
+    Accepts a JSON eligibility request, calls a public SOAP test service (sondahub.com's generic "Bank" SOAP sandbox) to retrieve customer KYC/risk data, and returns a JSON eligibility decision. NOTE: the SOAP backend has no native "eligibility" operation - the eligibility rule is applied entirely in the Micro Integrator mediation layer. See README for details.
+  title: Loans Eligibility API
+  version: 1.0.0
+openapi: 3.0.1
+paths:
+  /eligibility:
+    post:
+      operationId: checkLoanEligibility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EligibilityRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibilityResponse'
+          description: Eligibility decision returned
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Malformed request body
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Customer not found (SOAP Fault code=not_found)
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: SOAP backend unavailable or returned an unexpected fault
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: SOAP backend response timeout
+      security:
+      - default: []
+      summary: Check loan eligibility for a customer
+security:
+- default: []
+servers:
+- url: https://localhost:8243/loans/1.0.0

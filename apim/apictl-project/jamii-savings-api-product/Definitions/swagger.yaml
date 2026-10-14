@@ -1,0 +1,247 @@
+openapi: 3.0.1
+info:
+  title: JamiiSavingsAPIProduct
+  description: "All three Jamii Savings Micro Integrator APIs (account balance, customer proxy, loan eligibility) grouped as a single API Product for the practical assignment."
+  version: 1.0.0
+servers:
+ -
+  url: /
+security:
+ -
+  default: []
+paths:
+  /{accountNumber}/balance:
+    get:
+      summary: Get account balance
+      operationId: getAccountBalance
+      parameters:
+       -
+        name: accountNumber
+        in: path
+        description: 10-digit numeric account number
+        required: true
+        style: simple
+        explode: false
+        schema:
+          pattern: "^[0-9]{10}$"
+          type: string
+      responses:
+        "200":
+          description: Account balance retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountBalanceResponse"
+        "400":
+          description: Malformed account number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Database-level failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+  /eligibility:
+    post:
+      summary: Check loan eligibility for a customer
+      operationId: checkLoanEligibility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EligibilityRequest"
+        required: true
+      responses:
+        "200":
+          description: Eligibility decision returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EligibilityResponse"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer not found (SOAP Fault code=not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SOAP backend unavailable or returned an unexpected fault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SOAP backend response timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+  /{customerId}:
+    get:
+      summary: Get customer profile
+      operationId: getCustomer
+      parameters:
+       -
+        name: customerId
+        in: path
+        description: Numeric customer ID
+        required: true
+        style: simple
+        explode: false
+        schema:
+          pattern: "^[0-9]+$"
+          type: string
+       -
+        name: X-Correlation-ID
+        in: header
+        description: Optional caller-supplied correlation ID; generated if absent
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Customer profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+        "400":
+          description: Malformed customerId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer not found upstream
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream connection failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: Upstream response timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+components:
+  schemas:
+    AccountBalanceResponse:
+      type: object
+      properties:
+        accountNumber:
+          type: string
+        balance:
+          type: object
+          properties:
+            amount:
+              type: number
+            currency:
+              type: string
+        requestId:
+          type: string
+        status:
+          type: string
+          enum:
+           - ACTIVE
+           - DORMANT
+           - CLOSED
+        timestamp:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+    EligibilityRequest:
+      required:
+       - customerId
+       - requestedAmount
+      type: object
+      properties:
+        customerId:
+          type: integer
+        requestedAmount:
+          type: number
+    EligibilityResponse:
+      type: object
+      properties:
+        correlationId:
+          type: string
+        customerId:
+          type: string
+        eligible:
+          type: boolean
+        reason:
+          type: string
+        requestId:
+          type: string
+        riskScore:
+          type: integer
+    CustomerResponse:
+      type: object
+      properties:
+        customerId:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        username:
+          type: string
+  securitySchemes:
+    default:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://test.com
+          scopes: {}
+          x-scopes-bindings: {}

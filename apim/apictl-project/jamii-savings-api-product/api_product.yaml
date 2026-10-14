@@ -1,0 +1,128 @@
+type: api_product
+version: v4.7.0
+data:
+  id: db061fb1-a351-4827-9c3c-a2a98f591ff9
+  name: JamiiSavingsAPIProduct
+  displayName: JamiiSavingsAPIProduct
+  context: /jamii-savings
+  version: 1.0.0
+  description: "All three Jamii Savings Micro Integrator APIs (account balance, customer proxy, loan eligibility) grouped as a single API Product for the practical assignment."
+  provider: admin
+  hasThumbnail: false
+  state: PUBLISHED
+  enableSchemaValidation: false
+  isDefaultVersion: true
+  isRevision: false
+  revisionId: 0
+  responseCachingEnabled: false
+  cacheTimeout: 300
+  visibility: PUBLIC
+  visibleRoles: []
+  visibleTenants: []
+  accessControl: NONE
+  accessControlRoles: []
+  transport:
+   - http
+   - https
+  tags: []
+  policies:
+   - Unlimited
+  authorizationHeader: Authorization
+  apiKeyHeader: ApiKey
+  securityScheme:
+   - oauth_basic_auth_api_key_mandatory
+   - oauth2
+  subscriptionAvailability: ALL_TENANTS
+  subscriptionAvailableTenants: []
+  additionalProperties: []
+  additionalPropertiesMap: {}
+  businessInformation: {}
+  corsConfiguration:
+    corsConfigurationEnabled: false
+    accessControlAllowOrigins:
+     - '*'
+    accessControlAllowCredentials: false
+    accessControlAllowHeaders:
+     - authorization
+     - Access-Control-Allow-Origin
+     - Content-Type
+     - SOAPAction
+     - apikey
+     - Internal-Key
+    accessControlAllowMethods:
+     - GET
+     - PUT
+     - POST
+     - DELETE
+     - PATCH
+     - OPTIONS
+  createdTime: "1791843824692"
+  gatewayVendor: wso2
+  apis:
+   -
+    name: CustomersAPI
+    apiId: ccde4a57-14b1-48d2-a7b4-83637dddb843
+    version: 1.0.0
+    operations:
+     -
+      id: ""
+      target: "/{customerId}"
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: Unlimited
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response: []
+        fault: []
+      operationHubPolicies: []
+   -
+    name: AccountsBalanceAPI
+    apiId: 928bd454-5760-4bf0-b810-846668bf9f9d
+    version: 1.0.0
+    operations:
+     -
+      id: ""
+      target: "/{accountNumber}/balance"
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: Unlimited
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request:
+         -
+          policyName: addHeader
+          policyVersion: v3
+          policyType: common
+          policyId: 6f06f302-3e79-4296-b1a5-633e123f1e98
+          parameters:
+            headerValue: Jamii-APIM-Gateway
+            headerName: X-Gateway-Processed-By
+        response: []
+        fault: []
+      operationHubPolicies: []
+   -
+    name: LoansEligibilityAPI
+    apiId: 3d84a747-aa7f-44e3-a3cd-6225d30e2dfa
+    version: 1.0.0
+    operations:
+     -
+      id: ""
+      target: /eligibility
+      verb: POST
+      authType: Application & Application User
+      throttlingPolicy: Unlimited
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response: []
+        fault: []
+      operationHubPolicies: []
+  scopes: []
+  categories: []
+  audiences:
+   - all
+  egress: false

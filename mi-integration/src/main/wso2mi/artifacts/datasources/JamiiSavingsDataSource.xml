@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<datasource>
+    <name>JamiiSavingsDataSource</name>
+    <description>H2 embedded, file-based datasource for the Jamii Savings accounts DB (self-contained; schema/seed in /db)</description>
+    <jndiConfig>
+        <name>jdbc/JamiiSavingsDS</name>
+    </jndiConfig>
+    <definition type="RDBMS">
+        <configuration>
+            <url>jdbc:h2:file:./dbdata/jamiisavings;AUTO_SERVER=TRUE;INIT=RUNSCRIPT FROM 'file:./db/schema.sql'\;RUNSCRIPT FROM 'file:./db/seed.sql'</url>
+            <username>sa</username>
+            <password></password>
+            <driverClassName>org.h2.Driver</driverClassName>
+            <maxActive>10</maxActive>
+            <maxWait>60000</maxWait>
+            <testOnBorrow>true</testOnBorrow>
+            <validationQuery>SELECT 1</validationQuery>
+            <validationInterval>30000</validationInterval>
+        </configuration>
+    </definition>
+</datasource>

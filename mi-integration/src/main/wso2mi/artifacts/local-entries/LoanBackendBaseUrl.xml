@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Configurable base URL for the loan eligibility SOAP backend (1c).
+    See loans-eligibility-api.xml for the documented limitation: this is a
+    generic public SOAP bank sandbox (sondahub.com), not a dedicated
+    eligibility service.
+-->
+<localEntry key="LoanBackendBaseUrl" xmlns="http://ws.apache.org/ns/synapse">https://api.sondahub.com/soap/bank</localEntry>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Hybrid account-number enrichment for 1b (Customer Proxy):
+
+    DummyJSON's real /users/{id} endpoint has no concept of a bank account
+    number, so for the single demo customer below we instead call a DummyJSON
+    "custom" snippet (a fixed, hand-authored JSON blob) that was created to
+    include an "accountNumbers" array whose values match real rows in
+    db/seed.sql - letting this customer's account number(s) be looked up via
+    1a (AccountsBalanceAPI) too.
+
+    This does NOT scale to arbitrary customer IDs: DummyJSON snippets are
+    static content at an opaque hash URL, not a dynamic per-ID lookup. Every
+    other customerId falls back to the standard /users/{id} proxy call with
+    no accountNumbers field, exactly as before. To wire up another demo
+    customer, create another snippet at https://dummyjson.com/c/ whose
+    accountNumbers match seeded rows in db/seed.sql, then add a
+    CustomerAccountSnippetUrl_<id>.xml local-entry for it here.
+
+    Looked up dynamically in customers-proxy-api.xml via:
+      get-property(fn:concat('CustomerAccountSnippetUrl_', get-property('customerId')))
+    which resolves to nothing (falsy) for any customerId without a matching
+    local-entry, naturally triggering the fallback path.
+-->
+<localEntry key="CustomerAccountSnippetUrl_3" xmlns="http://ws.apache.org/ns/synapse">https://dummyjson.com/c/fed8-1392-46b9-9b35</localEntry>
