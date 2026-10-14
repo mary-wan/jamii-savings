@@ -3,9 +3,6 @@
     <resource methods="GET" uri-template="/{accountNumber}/balance">
         <inSequence>
             <property expression="get-property('uri.var.accountNumber')" name="accountNumber" scope="default" type="STRING"/>
-            <!-- uuid() is not a supported Synapse XPath function in MI 4.6.0; Axis2 already
-                 generates a unique MessageID (urn:uuid:...) per request, so reuse that -
-                 stripping the "urn:uuid:" prefix so the response only shows the bare UUID. -->
             <property expression="substring-after(get-property('MessageID'), 'urn:uuid:')" name="requestId" scope="default" type="STRING"/>
             <property expression="fn:concat(get-property('SYSTEM_DATE','yyyy-MM-dd'),'T',get-property('SYSTEM_DATE','HH:mm:ss'))" name="timestamp" scope="default" type="STRING"/>
 

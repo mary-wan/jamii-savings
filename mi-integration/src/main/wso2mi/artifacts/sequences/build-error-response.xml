@@ -6,20 +6,8 @@
       - errorCode     (string)  e.g. "ACCOUNT_NOT_FOUND", "VALIDATION_ERROR", "DB_ERROR"
       - errorMessage  (string)  human-readable, safe to expose to the client
       - httpStatus    (string)  numeric HTTP status to set, e.g. "400", "404", "502"
-
-    Produces the common envelope:
-      {
-        "error": {
-          "code": "...",
-          "message": "...",
-          "requestId": "..."
-        }
-      }
 -->
 <sequence name="build-error-response" xmlns="http://ws.apache.org/ns/synapse">
-    <!-- Reuse the caller's requestId if already set (normal case); otherwise fall back
-         to the Axis2-generated MessageID, stripped of its "urn:uuid:" prefix. uuid() is
-         not a supported XPath function in MI 4.6.0. -->
     <filter xpath="not(boolean(get-property('requestId')))">
         <then>
             <property expression="substring-after(get-property('MessageID'), 'urn:uuid:')" name="requestId" scope="default" type="STRING"/>

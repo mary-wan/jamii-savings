@@ -1,10 +1,6 @@
 <#
     Jamii Savings Integration - lightweight API smoke test script (Phase 2).
 
-    Covers one success case + the required error cases for each of the three
-    MI integrations. No custom test framework - just curl + simple HTTP-status
-    assertions, as agreed for this practice assessment.
-
     Usage:
         pwsh scripts/test-apis.ps1                     # against MI directly (default)
         pwsh scripts/test-apis.ps1 -BaseUrl https://localhost:8243 -ThroughGateway -Token "<bearer-token>"
